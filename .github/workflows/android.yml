@@ -23,4 +23,22 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
       - name: Build, lint and test backups
-        run: bash ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
+        run: |
+          if bash ./gradlew --no-daemon --console=plain assembleDebug lintDebug testDebugUnitTest > android-checks.log 2>&1; then
+            tail -n 100 android-checks.log
+          else
+            tail -n 160 android-checks.log
+            exit 1
+          fi
+      - name: Save APK and verification reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: table-notes-verification
+          retention-days: 7
+          path: |
+            android-checks.log
+            app/build/outputs/apk/debug/*.apk
+            app/build/reports/
+            app/build/test-results/
+
