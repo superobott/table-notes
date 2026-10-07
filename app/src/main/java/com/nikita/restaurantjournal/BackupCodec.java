@@ -48,6 +48,7 @@ final class BackupCodec {
     }
 
     static String encode(List<Entry> entries) throws JSONException {
+        if (entries.size()>10000) throw new JSONException("Too many entries");
         JSONArray rows=new JSONArray();
         for (Entry entry:entries) {
             JSONObject row=new JSONObject().put("name",entry.name).put("grade",entry.grade)
@@ -55,6 +56,8 @@ final class BackupCodec {
             if (!entry.placeId.isEmpty()) row.put("google_place_id",entry.placeId);
             rows.put(row);
         }
-        return new JSONObject().put("format","table-notes").put("version",2).put("restaurants",rows).toString(2);
+        String json=new JSONObject().put("format","table-notes").put("version",2).put("restaurants",rows).toString(2);
+        if (json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>5_000_000) throw new JSONException("Backup too large");
+        return json;
     }
 }

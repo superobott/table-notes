@@ -28,7 +28,9 @@ public class MainActivity extends Activity {
     private long editingId;
     private String draftPlaceId = "", pendingPlaceId = "";
     private int sort=0;
-    private static final int EXPORT=41, IMPORT=42;
+    private String pendingRestoreUri;
+    private AlertDialog restoreDialog;
+    private static final int EXPORT=41, IMPORT=42, DISCOVER=43;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -47,7 +49,7 @@ public class MainActivity extends Activity {
         summary=text("",14,GREEN); summary.setPadding(0,dp(8),0,dp(16)); root.addView(summary);
         Button discover=button("Discover restaurants · Google Maps");
         root.addView(discover,new LinearLayout.LayoutParams(-1,dp(52)));
-        discover.setOnClickListener(v->startActivity(new Intent(this,DiscoverActivity.class)));
+        discover.setOnClickListener(v->startActivityForResult(new Intent(this,DiscoverActivity.class),DISCOVER));
         search=new EditText(this); search.setSingleLine(true); search.setHint("Search restaurants or comments"); search.setTextSize(15); root.addView(search,new LinearLayout.LayoutParams(-1,dp(52)));
         Spinner order=new Spinner(this); order.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Recently edited","Highest grade","Lowest grade","Name A–Z"})); root.addView(order);
         order.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){ public void onItemSelected(AdapterView<?> p,View v,int pos,long id){sort=pos;refresh();} public void onNothingSelected(AdapterView<?> p){} });
@@ -57,13 +59,14 @@ public class MainActivity extends Activity {
         if(state!=null){sort=state.getInt("sort",0); order.setSelection(sort); search.setText(state.getString("search",""));}
         refresh();
         if(state!=null && state.getBoolean("editing",false)) {pendingPlaceId=state.getString("draftPlaceId","");editor(state.getLong("editingId"),state.getString("draftName",""),state.getInt("draftGrade",8),state.getString("draftComment",""));}
-        else consumeDiscoveryIntent();
+        if(state!=null && state.getString("pendingRestoreUri")!=null) {
+            pendingRestoreUri=state.getString("pendingRestoreUri");
+            restoreBackup(new Intent().setData(android.net.Uri.parse(pendingRestoreUri)));
+        }
         DailyDiscoveryJob.ensureScheduled(this);
     }
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);consumeDiscoveryIntent();}
-    private void consumeDiscoveryIntent(){if(getIntent().getBooleanExtra("add_discovered",false)){pendingPlaceId=getIntent().getStringExtra("google_place_id");if(pendingPlaceId==null||pendingPlaceId.length()>1024)pendingPlaceId="";getIntent().removeExtra("add_discovered");getIntent().removeExtra("google_place_id");editor(-1,"",8,"");}}
     @Override protected void onResume(){super.onResume();refresh();}
-    @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b); b.putInt("sort",sort); b.putString("search",search.getText().toString());if(editDialog!=null&&editDialog.isShowing()){b.putBoolean("editing",true);b.putLong("editingId",editingId);b.putString("draftName",draftName.getText().toString());b.putString("draftComment",draftComment.getText().toString());b.putInt("draftGrade",draftGrade.getProgress());b.putString("draftPlaceId",draftPlaceId);}}
+    @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b); b.putString("pendingRestoreUri",pendingRestoreUri); b.putInt("sort",sort); b.putString("search",search.getText().toString());if(editDialog!=null&&editDialog.isShowing()){b.putBoolean("editing",true);b.putLong("editingId",editingId);b.putString("draftName",draftName.getText().toString());b.putString("draftComment",draftComment.getText().toString());b.putInt("draftGrade",draftGrade.getProgress());b.putString("draftPlaceId",draftPlaceId);}}
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
@@ -108,9 +111,22 @@ public class MainActivity extends Activity {
     private void backupMenu(View anchor){PopupMenu m=new PopupMenu(this,anchor);m.getMenu().add("Export backup");m.getMenu().add("Restore backup");m.setOnMenuItemClickListener(item->{if(item.getTitle().equals("Export backup")){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"table-notes-backup.json");startActivityForResult(i,EXPORT);}else{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");startActivityForResult(i,IMPORT);}return true;});m.show();}
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(request==DISCOVER) {
+            if(result==RESULT_OK && data!=null) {
+                pendingPlaceId=data.getStringExtra("google_place_id");
+                if(pendingPlaceId==null || pendingPlaceId.length()>1024)pendingPlaceId="";
+                editor(-1,"",8,"");
+            }
+            return;
+        }
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
         if(request==EXPORT)exportBackup(data);
-        if(request==IMPORT)restoreBackup(data);
+        if(request==IMPORT) {
+            try {getContentResolver().takePersistableUriPermission(data.getData(),data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION);}
+            catch(SecurityException unsupported) { /* The current temporary read grant still survives rotation. */ }
+            pendingRestoreUri=data.getData().toString();
+            restoreBackup(data);
+        }
     }
     private void exportBackup(Intent data) {
         try {
@@ -136,9 +152,10 @@ public class MainActivity extends Activity {
             }
             // Parse every record before offering to replace the database.
             List<BackupCodec.Entry> entries=BackupCodec.decode(out.toString("UTF-8"));
-            new AlertDialog.Builder(this).setTitle("Restore "+entries.size()+" restaurants?")
+            restoreDialog=new AlertDialog.Builder(this).setTitle("Restore "+entries.size()+" restaurants?")
                     .setMessage("This replaces your current list. Export it first if you want to keep it.")
-                    .setNegativeButton("Cancel",null).setPositiveButton("Replace list",(dialog,which)->{
+                    .setNegativeButton("Cancel",(dialog,which)->clearPendingRestore()).setPositiveButton("Replace list",(dialog,which)->{
+                        clearPendingRestore();
                         db.beginTransaction();
                         try {
                             db.delete("places",null,null);
@@ -152,9 +169,18 @@ public class MainActivity extends Activity {
                         }catch(Exception error){toast("Restore failed; your list was kept.");}
                         finally{db.endTransaction();}
                         refresh();
-                    }).show();
-        }catch(Exception error){toast("This isn't a valid Table Notes backup.");}
+                    }).create();
+            restoreDialog.setOnCancelListener(dialog->clearPendingRestore());
+            restoreDialog.show();
+        }catch(Exception error){clearPendingRestore();toast("This isn't a valid Table Notes backup.");}
+    }
+    private void clearPendingRestore() {
+        if(pendingRestoreUri!=null) {
+            try {getContentResolver().releasePersistableUriPermission(android.net.Uri.parse(pendingRestoreUri),Intent.FLAG_GRANT_READ_URI_PERMISSION);}
+            catch(SecurityException unsupported) {}
+        }
+        pendingRestoreUri=null;
     }
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
-    @Override protected void onDestroy(){super.onDestroy();db.close();}
+    @Override protected void onDestroy(){if(restoreDialog!=null)restoreDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
 }

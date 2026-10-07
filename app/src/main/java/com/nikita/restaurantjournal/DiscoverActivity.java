@@ -207,11 +207,10 @@ public class DiscoverActivity extends Activity {
             actions.addView(map,new LinearLayout.LayoutParams(0,dp(52),1));
             Button review = button("Add my review");
             review.setOnClickListener(v -> {
-                Intent intent = new Intent(this,MainActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                intent.putExtra("add_discovered",true);
+                Intent intent = new Intent();
                 intent.putExtra("google_place_id",place.getId());
-                startActivity(intent);
+                setResult(RESULT_OK,intent);
+                finish();
             });
             actions.addView(review,new LinearLayout.LayoutParams(0,dp(52),1));
             card.addView(actions);
@@ -281,7 +280,7 @@ public class DiscoverActivity extends Activity {
         setupDialog = new AlertDialog.Builder(this).setTitle("Google discovery setup").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
         setupDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         clear.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Remove Google setup?").setMessage("This removes the API key and saved search area, and stops daily discovery. Your journal stays on this phone.")
-                .setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w) -> {cancelSearch(); DiscoverySettings.clear(this); setupDialog.dismiss(); showStatus(); showEmpty("Google setup removed. Your journal is still available offline.");}).show());
+                .setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w) -> {cancelSearch(); stopLocation(); DiscoverySettings.clear(this); setupDialog.dismiss(); showStatus(); showEmpty("Google setup removed. Your journal is still available offline.");}).show());
         setupDialog.setOnShowListener(d -> setupDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String value = key.getText().toString().trim(); if (value.isEmpty()) value = DiscoverySettings.apiKey(this);
             if (!value.startsWith("AIza") || value.length()<30 || value.length()>200) { key.setError("Enter your Google Places API key"); return; }

@@ -7,6 +7,16 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class BackupCodecTest {
+    @Test public void exportAcceptsRowLimitAndRejectsOneMore() throws Exception {
+        BackupCodec.Entry entry=new BackupCodec.Entry("Cafe",8,"",1,"");
+        assertEquals(10000,BackupCodec.decode(BackupCodec.encode(java.util.Collections.nCopies(10000,entry))).size());
+        try {BackupCodec.encode(java.util.Collections.nCopies(10001,entry));fail("Export exceeds restore row limit");}catch(JSONException expected){}
+    }
+    @Test public void exportRejectsUtf8PayloadBeyondRestoreByteLimit() throws Exception {
+        char[] chars=new char[1000];java.util.Arrays.fill(chars,'\u05d0');
+        BackupCodec.Entry entry=new BackupCodec.Entry("Cafe",8,new String(chars),1,"");
+        try {BackupCodec.encode(java.util.Collections.nCopies(3000,entry));fail("Export exceeds restore byte limit");}catch(JSONException expected){}
+    }
     @Test public void oldBackupsStillRestoreWithoutGoogleLink() throws Exception {
         String json="{\"format\":\"table-notes\",\"version\":1,\"restaurants\":[{\"name\":\"Cafe\",\"grade\":8,\"comment\":\"Good lunch\",\"updated\":1000}]}";
         List<BackupCodec.Entry> entries=BackupCodec.decode(json);
