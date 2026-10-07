@@ -122,6 +122,8 @@ public class MainActivity extends Activity {
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
         if(request==EXPORT)exportBackup(data);
         if(request==IMPORT) {
+            if(restoreDialog!=null)restoreDialog.dismiss();
+            clearPendingRestore();
             try {getContentResolver().takePersistableUriPermission(data.getData(),data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION);}
             catch(SecurityException unsupported) { /* The current temporary read grant still survives rotation. */ }
             pendingRestoreUri=data.getData().toString();
@@ -172,7 +174,8 @@ public class MainActivity extends Activity {
                     }).create();
             restoreDialog.setOnCancelListener(dialog->clearPendingRestore());
             restoreDialog.show();
-        }catch(Exception error){clearPendingRestore();toast("This isn't a valid Table Notes backup.");}
+        }catch(IOException | SecurityException error){clearPendingRestore();toast("Couldn't read the backup. Select the file again.");}
+        catch(Exception error){clearPendingRestore();toast("This isn't a valid Table Notes backup.");}
     }
     private void clearPendingRestore() {
         if(pendingRestoreUri!=null) {
@@ -184,3 +187,4 @@ public class MainActivity extends Activity {
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
     @Override protected void onDestroy(){if(restoreDialog!=null)restoreDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
 }
+
