@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
         if(request==IMPORT) {
             if(restoreDialog!=null)restoreDialog.dismiss();
             clearPendingRestore();
-            try {getContentResolver().takePersistableUriPermission(data.getData(),data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION);}
+            try {if((data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION)!=0)getContentResolver().takePersistableUriPermission(data.getData(),Intent.FLAG_GRANT_READ_URI_PERMISSION);}
             catch(SecurityException unsupported) { /* The current temporary read grant still survives rotation. */ }
             pendingRestoreUri=data.getData().toString();
             restoreBackup(data);
