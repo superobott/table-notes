@@ -185,6 +185,6 @@ public class MainActivity extends Activity {
         pendingRestoreUri=null;
     }
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
-    @Override protected void onDestroy(){if(restoreDialog!=null)restoreDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
+    @Override protected void onDestroy(){if(isFinishing())clearPendingRestore();if(restoreDialog!=null)restoreDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
 }
 
