@@ -5,3 +5,6 @@ local.properties
 *.keystore
 *.jks
 table-notes-backup*.json
+
+signing.properties
+*.p12
