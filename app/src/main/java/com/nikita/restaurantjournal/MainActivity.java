@@ -142,7 +142,13 @@ public class MainActivity extends Activity {
             if(result==RESULT_OK && data!=null) {
                 pendingPlaceId=data.getStringExtra("google_place_id");
                 if(pendingPlaceId==null || pendingPlaceId.length()>1024)pendingPlaceId="";
-                editor(-1,"",8,"");
+                long existing=findEntryByPlaceId(pendingPlaceId);
+                if(existing>=0) {
+                    pendingPlaceId="";
+                    try(Cursor c=db.rawQuery("SELECT name,grade,comment FROM places WHERE id=?",new String[]{String.valueOf(existing)})) {
+                        if(c.moveToFirst())editor(existing,c.getString(0),c.getInt(1),c.getString(2));
+                    }
+                } else editor(-1,"",8,"");
             }
             return;
         }
@@ -156,6 +162,15 @@ public class MainActivity extends Activity {
             pendingRestoreUri=data.getData().toString();
             restoreBackup(data);
         }
+    }
+    private long findEntryByPlaceId(String placeId) {
+        if(placeId==null||placeId.isEmpty())return -1;
+        Map<Long,String> entries=new LinkedHashMap<>();
+        // Bound query; oldest matching row wins if older versions made duplicates.
+        try(Cursor c=db.rawQuery("SELECT id,google_place_id FROM places WHERE google_place_id=? ORDER BY id LIMIT 1",new String[]{placeId})) {
+            while(c.moveToNext())entries.put(c.getLong(0),c.getString(1));
+        }
+        return PlaceIdLookup.findEntryId(placeId,entries);
     }
     private void exportBackup(Intent data) {
         try {
