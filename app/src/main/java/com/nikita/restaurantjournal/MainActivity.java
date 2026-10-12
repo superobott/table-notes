@@ -37,10 +37,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        db=new SQLiteOpenHelper(this,"restaurants.db",null,2) {
-            public void onCreate(SQLiteDatabase d) { d.execSQL("CREATE TABLE places (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, grade INTEGER NOT NULL CHECK(grade BETWEEN 0 AND 10), comment TEXT NOT NULL, updated INTEGER NOT NULL, google_place_id TEXT)"); }
-            public void onUpgrade(SQLiteDatabase d,int old,int next) { if(old<2)d.execSQL("ALTER TABLE places ADD COLUMN google_place_id TEXT"); }
-        }.getWritableDatabase();
+        db=new JournalDatabase(this).getWritableDatabase();
         LinearLayout root=column(); root.setBackgroundColor(CREAM);
         root.setPadding(dp(22),dp(12),dp(22),dp(12));
         root.setOnApplyWindowInsetsListener((v,i)->{ v.setPadding(dp(22),i.getSystemWindowInsetTop()+dp(12),dp(22),i.getSystemWindowInsetBottom()+dp(12)); return i; });
