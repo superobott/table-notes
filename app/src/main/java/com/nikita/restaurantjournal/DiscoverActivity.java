@@ -147,7 +147,8 @@ public class DiscoverActivity extends Activity {
         areaLabel.setText(area ? String.format(Locale.getDefault(),"Saved area: %.3f, %.3f · %d km radius",
                 DiscoverySettings.latitude(this),DiscoverySettings.longitude(this),p.getInt("radius_km",5))
                 : "Choose the area you want to explore");
-        if (DiscoverySettings.apiKey(this).isEmpty()) status.setText("Google setup needed. Add your restricted Places API key in Setup & updates.");
+        if (DiscoverySettings.hasUnreadableKey(this)) status.setText("The saved API key cannot be decrypted on this device. Enter it again in Setup & updates.");
+        else if (DiscoverySettings.apiKey(this).isEmpty()) status.setText("Google setup needed. Add your restricted Places API key in Setup & updates.");
         else if (!DiscoverySettings.configured(this)) status.setText("Complete setup and choose an area to start discovery.");
         else {
             String daily = p.getBoolean("daily",true) ? "Daily updates enabled for this saved area." : "Daily updates off.";
@@ -319,13 +320,19 @@ public class DiscoverActivity extends Activity {
             if (!httpsUrl(privacyUrl)) { privacy.setError("Enter the HTTPS URL of your published privacy page"); return; }
             if (!httpsUrl(termsUrl)) { terms.setError("Enter the HTTPS URL of your published terms page"); return; }
             try {
-                cancelSearch();
                 DiscoverySettings.save(this,value,radii[radius.getSelectedItemPosition()],daily.isChecked(),privacyUrl,termsUrl);
-                clearResults();
-                DiscoveryClient.reset(); setupDialog.dismiss(); showStatus();
-                showEmpty("Setup saved. Choose an area and tap Update now.");
-                if (DiscoverySettings.configured(this)) load();
-            } catch (Exception error) { toast("Couldn't securely save the key. Please try again."); }
+            } catch (DiscoverySettings.KeyStorageException error) {
+                toast("Couldn't securely save the key on this device. Please try again."); return;
+            } catch (java.io.IOException error) {
+                toast("Couldn't save Google settings. Please try again."); return;
+            } catch (Exception error) {
+                toast("Couldn't securely save the key on this device. Please try again."); return;
+            }
+            cancelSearch(); clearResults(); DiscoveryClient.reset();
+            setupDialog.dismiss(); showStatus();
+            showEmpty("Setup saved. Choose an area and tap Update now.");
+            DailyDiscoveryJob.schedule(this);
+            if (DiscoverySettings.configured(this)) load();
         }));
         setupDialog.show();
     }
