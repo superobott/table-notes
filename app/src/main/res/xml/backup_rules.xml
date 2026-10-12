@@ -1,0 +1,4 @@
+<full-backup-content>
+    <!-- An include list is an allowlist: sharedpref and all other domains are excluded. -->
+    <include domain="database" path="."/>
+</full-backup-content>

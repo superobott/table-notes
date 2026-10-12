@@ -20,7 +20,7 @@ public class MainActivity extends Activity {
     private final int GREEN=Color.rgb(22,74,64), INK=Color.rgb(32,46,40), CREAM=Color.rgb(247,244,237);
     private SQLiteDatabase db;
     private LinearLayout list;
-    private TextView summary;
+    private TextView summary, lastBackup;
     private EditText search;
     private AlertDialog editDialog;
     private EditText draftName, draftComment;
@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
         TextView title=text("Table Notes",32,INK); title.setTypeface(null,Typeface.BOLD); heading.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         Button menu=button("⋮"); menu.setContentDescription("Backup and restore menu"); heading.addView(menu); menu.setOnClickListener(v->backupMenu(v)); root.addView(heading);
         summary=text("",14,GREEN); summary.setPadding(0,dp(8),0,dp(16)); root.addView(summary);
+        lastBackup=text("",12,GREEN); root.addView(lastBackup);
         Button discover=button("Discover restaurants · Google Maps");
         root.addView(discover,new LinearLayout.LayoutParams(-1,dp(52)));
         discover.setOnClickListener(v->startActivityForResult(new Intent(this,DiscoverActivity.class),DISCOVER));
@@ -74,6 +75,8 @@ public class MainActivity extends Activity {
     private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private void refresh(){
         if(list==null)return; list.removeAllViews();
+        long backup=getSharedPreferences("journal",MODE_PRIVATE).getLong("last_backup",0);
+        lastBackup.setText("Last backup: "+(backup==0?"Never":java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(new Date(backup))));
         try(Cursor c=db.rawQuery("SELECT COUNT(*), AVG(grade) FROM places",null)){c.moveToFirst();int n=c.getInt(0);summary.setText(n==0?"Good meals deserve a little note.":n+" restaurant"+(n==1?"":"s")+"  ·  "+String.format(Locale.getDefault(),"%.1f",c.getDouble(1))+" / 10 average");}
         String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);
         String order=new String[]{"updated DESC, id DESC","grade DESC, name COLLATE NOCASE","grade ASC, name COLLATE NOCASE","name COLLATE NOCASE"}[sort];
@@ -141,6 +144,8 @@ public class MainActivity extends Activity {
                 if(out==null)throw new IOException();
                 out.write(json.getBytes(StandardCharsets.UTF_8));
             }
+            getSharedPreferences("journal",MODE_PRIVATE).edit().putLong("last_backup",System.currentTimeMillis()).apply();
+            refresh();
             toast("Backup saved");
         }catch(Exception error){toast("Couldn't export the backup.");}
     }
