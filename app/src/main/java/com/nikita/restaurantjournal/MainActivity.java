@@ -202,8 +202,9 @@ public class MainActivity extends Activity {
                     .setMessage("This replaces your current list. Export it first if you want to keep it.")
                     .setNegativeButton("Cancel",(dialog,which)->clearPendingRestore()).setPositiveButton("Replace list",(dialog,which)->{
                         clearPendingRestore();
-                        db.beginTransaction();
                         try {
+                            db.beginTransaction();
+                            try {
                             db.delete("places",null,null);
                             for(BackupCodec.Entry entry:entries) {
                                 ContentValues values=new ContentValues();values.put("name",entry.name);values.put("grade",entry.grade);
@@ -211,9 +212,10 @@ public class MainActivity extends Activity {
                                 if(!entry.placeId.isEmpty())values.put("google_place_id",entry.placeId);
                                 db.insertOrThrow("places",null,values);
                             }
-                            db.setTransactionSuccessful();toast("Backup restored");
-                        }catch(Exception error){toast("Restore failed; your list was kept.");}
-                        finally{db.endTransaction();}
+                            db.setTransactionSuccessful();
+                            } finally { db.endTransaction(); }
+                            toast("Backup restored");
+                        }catch(Exception error){toast("Restore failed. Check your journal before trying again.");}
                         refresh();
                     }).create();
             restoreDialog.setOnCancelListener(dialog->clearPendingRestore());
