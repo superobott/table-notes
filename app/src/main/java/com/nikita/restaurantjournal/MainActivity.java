@@ -26,6 +26,9 @@ public class MainActivity extends Activity {
     private EditText draftName, draftComment;
     private SeekBar draftGrade;
     private long editingId;
+    private String originalDraftName, originalDraftComment;
+    private int originalDraftGrade;
+    private AlertDialog discardDialog;
     private String draftPlaceId = "", pendingPlaceId = "";
     private int sort=0;
     private String pendingRestoreUri;
@@ -59,7 +62,14 @@ public class MainActivity extends Activity {
         search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){refresh();}public void afterTextChanged(Editable e){} });
         if(state!=null){sort=state.getInt("sort",0); order.setSelection(sort); search.setText(state.getString("search",""));}
         refresh();
-        if(state!=null && state.getBoolean("editing",false)) {pendingPlaceId=state.getString("draftPlaceId","");editor(state.getLong("editingId"),state.getString("draftName",""),state.getInt("draftGrade",8),state.getString("draftComment",""));}
+        if(state!=null && state.getBoolean("editing",false)) {
+            pendingPlaceId=state.getString("draftPlaceId","");
+            editor(state.getLong("editingId"),state.getString("draftName",""),state.getInt("draftGrade",8),state.getString("draftComment",""));
+            originalDraftName=state.getString("originalDraftName",originalDraftName);
+            originalDraftComment=state.getString("originalDraftComment",originalDraftComment);
+            originalDraftGrade=state.getInt("originalDraftGrade",originalDraftGrade);
+            if(state.getBoolean("discard_open"))requestDiscard();
+        }
         if(state!=null && state.getString("pendingRestoreUri")!=null) {
             pendingRestoreUri=state.getString("pendingRestoreUri");
             restoreBackup(new Intent().setData(android.net.Uri.parse(pendingRestoreUri)));
@@ -67,7 +77,7 @@ public class MainActivity extends Activity {
         DailyDiscoveryJob.ensureScheduled(this);
     }
     @Override protected void onResume(){super.onResume();refresh();}
-    @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b); b.putString("pendingRestoreUri",pendingRestoreUri); b.putInt("sort",sort); b.putString("search",search.getText().toString());if(editDialog!=null&&editDialog.isShowing()){b.putBoolean("editing",true);b.putLong("editingId",editingId);b.putString("draftName",draftName.getText().toString());b.putString("draftComment",draftComment.getText().toString());b.putInt("draftGrade",draftGrade.getProgress());b.putString("draftPlaceId",draftPlaceId);}}
+    @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b); b.putString("pendingRestoreUri",pendingRestoreUri); b.putInt("sort",sort); b.putString("search",search.getText().toString());if(editDialog!=null&&editDialog.isShowing()){b.putBoolean("editing",true);b.putLong("editingId",editingId);b.putString("draftName",draftName.getText().toString());b.putString("draftComment",draftComment.getText().toString());b.putInt("draftGrade",draftGrade.getProgress());b.putString("draftPlaceId",draftPlaceId);b.putString("originalDraftName",originalDraftName);b.putString("originalDraftComment",originalDraftComment);b.putInt("originalDraftGrade",originalDraftGrade);b.putBoolean("discard_open",discardDialog!=null&&discardDialog.isShowing());}}
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
@@ -108,8 +118,22 @@ public class MainActivity extends Activity {
         EditText comment=new EditText(this);comment.setHint("What did you think?");comment.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);comment.setMinLines(3);comment.setMaxLines(6);comment.setGravity(Gravity.TOP);comment.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1000)});comment.setText(oldComment);form.addView(comment);
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle(id<0?"Add restaurant":"Edit restaurant").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        originalDraftName=original;originalDraftComment=oldComment;originalDraftGrade=initial;
+        dialog.setCanceledOnTouchOutside(false);
+        dialog.setOnKeyListener((d,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)requestDiscard();return true;}return false;});
         editDialog=dialog;draftName=name;draftComment=comment;draftGrade=grade;editingId=id;draftPlaceId=linkedPlaceId;
-        dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{String n=name.getText().toString().trim();if(n.isEmpty()){name.setError("Enter a restaurant name");return;}ContentValues values=new ContentValues();values.put("name",n);values.put("grade",grade.getProgress());values.put("comment",comment.getText().toString().trim());values.put("updated",System.currentTimeMillis());if(id<0&&!linkedPlaceId.isEmpty())values.put("google_place_id",linkedPlaceId);try{if(id<0)db.insertOrThrow("places",null,values);else db.update("places",values,"id=?",new String[]{String.valueOf(id)});dialog.dismiss();refresh();}catch(Exception e){toast("Couldn't save. Please try again.");}}));dialog.show();
+        dialog.setOnShowListener(v->{dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(b->requestDiscard());dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{String n=name.getText().toString().trim();if(n.isEmpty()){name.setError("Enter a restaurant name");return;}ContentValues values=new ContentValues();values.put("name",n);values.put("grade",grade.getProgress());values.put("comment",comment.getText().toString().trim());values.put("updated",System.currentTimeMillis());if(id<0&&!linkedPlaceId.isEmpty())values.put("google_place_id",linkedPlaceId);try{if(id<0)db.insertOrThrow("places",null,values);else db.update("places",values,"id=?",new String[]{String.valueOf(id)});dialog.dismiss();refresh();}catch(Exception e){toast("Couldn't save. Please try again.");}});});dialog.show();
+    }
+    private void requestDiscard() {
+        if(discardDialog!=null&&discardDialog.isShowing())return;
+        boolean changed=!draftName.getText().toString().equals(originalDraftName)
+                || !draftComment.getText().toString().equals(originalDraftComment)
+                || draftGrade.getProgress()!=originalDraftGrade;
+        if(!changed){editDialog.dismiss();return;}
+        discardDialog=new AlertDialog.Builder(this).setTitle("Discard changes?")
+                .setMessage("Your unsaved name, grade and comment will be discarded.")
+                .setNegativeButton("Keep editing",null)
+                .setPositiveButton("Discard",(d,w)->editDialog.dismiss()).show();
     }
     private void backupMenu(View anchor){PopupMenu m=new PopupMenu(this,anchor);m.getMenu().add("Export backup");m.getMenu().add("Restore backup");m.setOnMenuItemClickListener(item->{if(item.getTitle().equals("Export backup")){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"table-notes-backup.json");startActivityForResult(i,EXPORT);}else{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");startActivityForResult(i,IMPORT);}return true;});m.show();}
     @Override protected void onActivityResult(int request,int result,Intent data) {
@@ -190,6 +214,6 @@ public class MainActivity extends Activity {
         pendingRestoreUri=null;
     }
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
-    @Override protected void onDestroy(){if(isFinishing())clearPendingRestore();if(restoreDialog!=null)restoreDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
+    @Override protected void onDestroy(){if(isFinishing())clearPendingRestore();if(restoreDialog!=null)restoreDialog.dismiss();if(discardDialog!=null)discardDialog.dismiss();if(editDialog!=null)editDialog.dismiss();super.onDestroy();db.close();}
 }
 
