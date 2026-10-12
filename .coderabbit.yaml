@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!**/*.apk"
+    - "!**/*.zip"
+    - "!**/*.jar"
+  path_instructions:
+    - path: "app/src/main/java/**/*.java"
+      instructions: >-
+        Review for Android lifecycle and cancellation bugs, daily JobScheduler
+        behavior, data preservation when upgrading from database version 1,
+        atomic backup restore, API-key handling, stale callbacks after an area
+        or key change, and Google Places content storage and attribution.
+        Personal journal entries must work without internet. Google's provider
+        content must not be persisted beyond permitted place IDs. Flag concrete
+        correctness and security issues before cosmetic changes.
