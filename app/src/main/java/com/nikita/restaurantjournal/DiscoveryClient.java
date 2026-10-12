@@ -23,16 +23,19 @@ final class DiscoveryClient {
     private static PlacesClient client;
 
     static synchronized void reset() {
-        Places.deinitialize();
+        if (Places.isInitialized()) Places.deinitialize();
         initializedKey = "";
         client = null;
     }
 
     private static synchronized PlacesClient client(Context context) {
         String key = DiscoverySettings.apiKey(context);
-        if (key.isEmpty()) throw new IllegalStateException("Set up Google Places first.");
+        if (key.isEmpty()) {
+            if (DiscoverySettings.hasUnreadableKey(context)) throw new KeyUnavailableException();
+            throw new IllegalStateException("Set up Google Places first.");
+        }
         if (client == null || !key.equals(initializedKey)) {
-            Places.deinitialize();
+            if (Places.isInitialized()) Places.deinitialize();
             Places.initializeWithNewPlacesApiEnabled(context.getApplicationContext(), key);
             client = Places.createClient(context.getApplicationContext());
             initializedKey = key;
@@ -73,7 +76,10 @@ final class DiscoveryClient {
         return added;
     }
 
+    private static final class KeyUnavailableException extends IllegalStateException {}
+
     static String error(Exception error) {
+        if (error instanceof KeyUnavailableException) return "The saved API key cannot be decrypted on this device. Enter it again in Setup & updates.";
         if (error instanceof ApiException) {
             int code = ((ApiException) error).getStatusCode();
             if (code == 7) return "No internet connection. Your journal still works offline.";

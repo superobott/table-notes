@@ -47,6 +47,18 @@ public class DiscoverActivity extends Activity {
     private boolean findingLocation;
     private int requestSequence;
     private AlertDialog setupDialog;
+    private final List<AlertDialog> dialogs = new ArrayList<>();
+    // Session-only provider content: never written to preferences or saved state.
+    private static List<Place> sessionPlaces;
+    private static Set<String> sessionNewIds = Collections.emptySet();
+    private static String sessionRevision;
+    private boolean initialLoadPending;
+
+    private AlertDialog track(AlertDialog dialog) { dialogs.add(dialog); return dialog; }
+    private void clearResults() {
+        sessionPlaces=null; sessionNewIds=Collections.emptySet(); sessionRevision=null;
+    }
+
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -73,8 +85,8 @@ public class DiscoverActivity extends Activity {
         LinearLayout controls = new LinearLayout(this);
         Button area = button("Choose area");
         Button settings = button("Setup & updates");
-        controls.addView(area,new LinearLayout.LayoutParams(0,dp(52),1));
-        controls.addView(settings,new LinearLayout.LayoutParams(0,dp(52),1));
+        controls.addView(area,new LinearLayout.LayoutParams(0,-2,1));
+        controls.addView(settings,new LinearLayout.LayoutParams(0,-2,1));
         area.setOnClickListener(v -> chooseArea());
         settings.setOnClickListener(v -> setup());
         root.addView(controls);
@@ -99,18 +111,33 @@ public class DiscoverActivity extends Activity {
         update = button("Update now");
         update.setTextColor(Color.WHITE);
         update.setBackground(shape(GREEN));
-        root.addView(update,new LinearLayout.LayoutParams(-1,dp(56)));
+        update.setMinHeight(dp(56));
+        root.addView(update,new LinearLayout.LayoutParams(-1,-2));
         update.setOnClickListener(v -> load());
         root.addView(text("Your personal grades and comments stay in your journal.",12,GREEN));
         showStatus();
         showEmpty("Choose an area and complete Google setup to discover restaurants. Your journal is ready to use offline.");
-        if (DiscoverySettings.configured(this)) load();
+        String revision=DiscoverySettings.prefs(this).getString("revision","");
+        if (sessionPlaces!=null && revision.equals(sessionRevision)) render(sessionPlaces,sessionNewIds);
+        else initialLoadPending = saved==null && DiscoverySettings.configured(this);
+        if (saved!=null && saved.getBoolean("setup_open")) setup();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (initialLoadPending) { initialLoadPending=false; load(); }
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putBoolean("setup_open",setupDialog!=null && setupDialog.isShowing());
+        // Deliberately omit API keys and provider response content.
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private LinearLayout column() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
     private TextView text(String value,int size,int color) { TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(color); return t; }
-    private Button button(String value) { Button b = new Button(this); b.setText(value); b.setAllCaps(false); b.setTextColor(GREEN); return b; }
+    private Button button(String value) { Button b = new Button(this); b.setMinHeight(dp(52)); b.setText(value); b.setAllCaps(false); b.setTextColor(GREEN); return b; }
     private GradientDrawable shape(int color) { GradientDrawable s = new GradientDrawable(); s.setColor(color); s.setCornerRadius(dp(18)); return s; }
     private void toast(String value) { Toast.makeText(this,value,Toast.LENGTH_LONG).show(); }
     private boolean alive() { return !isFinishing() && !isDestroyed(); }
@@ -121,7 +148,8 @@ public class DiscoverActivity extends Activity {
         areaLabel.setText(area ? String.format(Locale.getDefault(),"Saved area: %.3f, %.3f · %d km radius",
                 DiscoverySettings.latitude(this),DiscoverySettings.longitude(this),p.getInt("radius_km",5))
                 : "Choose the area you want to explore");
-        if (DiscoverySettings.apiKey(this).isEmpty()) status.setText("Google setup needed. Add your restricted Places API key in Setup & updates.");
+        if (DiscoverySettings.hasUnreadableKey(this)) status.setText("The saved API key cannot be decrypted on this device. Enter it again in Setup & updates.");
+        else if (DiscoverySettings.apiKey(this).isEmpty()) status.setText("Google setup needed. Add your restricted Places API key in Setup & updates.");
         else if (!DiscoverySettings.configured(this)) status.setText("Complete setup and choose an area to start discovery.");
         else {
             String daily = p.getBoolean("daily",true) ? "Daily updates enabled for this saved area." : "Daily updates off.";
@@ -153,7 +181,9 @@ public class DiscoverActivity extends Activity {
                     .addOnSuccessListener(response -> {
                         if (!alive() || sequence != requestSequence || !revision.equals(DiscoverySettings.prefs(this).getString("revision",""))) return;
                         Set<String> newIds = DiscoveryClient.record(this,response.getPlaces(),revision);
-                        render(response.getPlaces(),newIds);
+                        sessionPlaces=new ArrayList<>(response.getPlaces());
+                        sessionNewIds=new HashSet<>(newIds); sessionRevision=revision;
+                        render(sessionPlaces,sessionNewIds);
                         DiscoverySettings.prefs(this).edit().remove("new_ids").apply();
                         showStatus();
                     })
@@ -204,7 +234,7 @@ public class DiscoverActivity extends Activity {
             Button map = button("Google Maps");
             map.setOnClickListener(v -> openUrl("https://www.google.com/maps/search/?api=1&query="
                     + Uri.encode(name) + "&query_place_id=" + Uri.encode(place.getId()==null?"":place.getId())));
-            actions.addView(map,new LinearLayout.LayoutParams(0,dp(52),1));
+            actions.addView(map,new LinearLayout.LayoutParams(0,-2,1));
             Button review = button("Add my review");
             review.setOnClickListener(v -> {
                 Intent intent = new Intent();
@@ -212,37 +242,42 @@ public class DiscoverActivity extends Activity {
                 setResult(RESULT_OK,intent);
                 finish();
             });
-            actions.addView(review,new LinearLayout.LayoutParams(0,dp(52),1));
+            actions.addView(review,new LinearLayout.LayoutParams(0,-2,1));
             card.addView(actions);
         }
     }
 
     private void chooseArea() {
-        new AlertDialog.Builder(this).setTitle("Where should we look?")
+        track(new AlertDialog.Builder(this).setTitle("Where should we look?")
                 .setMessage("Daily updates use this saved area. Changing it sends the new search area to Google. Your phone's location is only read when you choose it here.")
                 .setPositiveButton("Use my location",(d,w) -> locate())
                 .setNeutralButton("Enter coordinates",(d,w) -> coordinates())
-                .setNegativeButton("Cancel",null).show();
+                .setNegativeButton("Cancel",null).create()).show();
     }
 
     private void coordinates() {
         LinearLayout form = column(); form.setPadding(dp(24),dp(12),dp(24),0);
         EditText lat = input("Latitude, e.g. 32.08",false);
         EditText lon = input("Longitude, e.g. 34.78",false);
+        for(EditText field : new EditText[]{lat,lon}) {
+            field.setKeyListener(android.text.method.DigitsKeyListener.getInstance("0123456789-+.,"));
+            field.setRawInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        }
         if (DiscoverySettings.hasArea(this)) { lat.setText(Double.toString(DiscoverySettings.latitude(this))); lon.setText(Double.toString(DiscoverySettings.longitude(this))); }
         form.addView(lat); form.addView(lon);
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Choose coordinates").setView(form).setNegativeButton("Cancel",null).setPositiveButton("Save area",null).create();
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             try {
-                double a = Double.parseDouble(lat.getText().toString().trim()), b = Double.parseDouble(lon.getText().toString().trim());
+                double a = Double.parseDouble(lat.getText().toString().trim().replace(',','.')), b = Double.parseDouble(lon.getText().toString().trim().replace(',','.'));
                 if (!Double.isFinite(a) || !Double.isFinite(b) || a < -90 || a > 90 || b < -180 || b > 180) throw new NumberFormatException();
                 cancelSearch();
+                clearResults();
                 DiscoverySettings.setArea(this,a,b);
                 dialog.dismiss(); showStatus();
                 if (DiscoverySettings.configured(this)) load();
-            } catch (NumberFormatException error) { lat.setError("Use valid latitude (−90 to 90) and longitude (−180 to 180), with a decimal point."); }
+            } catch (NumberFormatException error) { lat.setError("Use valid latitude (−90 to 90) and longitude (−180 to 180), with a decimal point or comma."); }
         }));
-        dialog.show();
+        track(dialog).show();
     }
 
     private EditText input(String hint,boolean secret) {
@@ -278,9 +313,11 @@ public class DiscoverActivity extends Activity {
         Button clear = button("Remove Google setup & stop updates"); form.addView(clear);
         ScrollView scroll = new ScrollView(this); scroll.addView(form);
         setupDialog = new AlertDialog.Builder(this).setTitle("Google discovery setup").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        track(setupDialog);
+        key.setSaveEnabled(false);
         setupDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        clear.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Remove Google setup?").setMessage("This removes the API key and saved search area, and stops daily discovery. Your journal stays on this phone.")
-                .setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w) -> {cancelSearch(); stopLocation(); DiscoverySettings.clear(this); setupDialog.dismiss(); showStatus(); showEmpty("Google setup removed. Your journal is still available offline.");}).show());
+        clear.setOnClickListener(v -> track(new AlertDialog.Builder(this).setTitle("Remove Google setup?").setMessage("This removes the API key and saved search area, and stops daily discovery. Your journal stays on this phone.")
+                .setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w) -> {cancelSearch(); stopLocation(); DiscoverySettings.clear(this); clearResults(); setupDialog.dismiss(); showStatus(); showEmpty("Google setup removed. Your journal is still available offline.");}).create()).show());
         setupDialog.setOnShowListener(d -> setupDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String value = key.getText().toString().trim(); if (value.isEmpty()) value = DiscoverySettings.apiKey(this);
             if (!value.startsWith("AIza") || value.length()<30 || value.length()>200) { key.setError("Enter your Google Places API key"); return; }
@@ -288,12 +325,19 @@ public class DiscoverActivity extends Activity {
             if (!httpsUrl(privacyUrl)) { privacy.setError("Enter the HTTPS URL of your published privacy page"); return; }
             if (!httpsUrl(termsUrl)) { terms.setError("Enter the HTTPS URL of your published terms page"); return; }
             try {
-                cancelSearch();
                 DiscoverySettings.save(this,value,radii[radius.getSelectedItemPosition()],daily.isChecked(),privacyUrl,termsUrl);
-                DiscoveryClient.reset(); setupDialog.dismiss(); showStatus();
-                showEmpty("Setup saved. Choose an area and tap Update now.");
-                if (DiscoverySettings.configured(this)) load();
-            } catch (Exception error) { toast("Couldn't securely save the key. Please try again."); }
+            } catch (DiscoverySettings.KeyStorageException error) {
+                toast("Couldn't securely save the key on this device. Please try again."); return;
+            } catch (java.io.IOException error) {
+                toast("Couldn't save Google settings. Please try again."); return;
+            } catch (Exception error) {
+                toast("Couldn't securely save the key on this device. Please try again."); return;
+            }
+            cancelSearch(); clearResults(); DiscoveryClient.reset();
+            setupDialog.dismiss(); showStatus();
+            showEmpty("Setup saved. Choose an area and tap Update now.");
+            DailyDiscoveryJob.schedule(this);
+            if (DiscoverySettings.configured(this)) load();
         }));
         setupDialog.show();
     }
@@ -318,7 +362,7 @@ public class DiscoverActivity extends Activity {
             StringBuilder sha = new StringBuilder(); for (byte b : digest) { if (sha.length()>0) sha.append(':'); sha.append(String.format(Locale.ROOT,"%02X",b & 255)); }
             String identity = "Package: " + getPackageName() + "\nSHA-1: " + sha;
             ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Android app identity",identity));
-            new AlertDialog.Builder(this).setTitle("Android key restriction").setMessage(identity).setPositiveButton("Copied",null).show();
+            track(new AlertDialog.Builder(this).setTitle("Android key restriction").setMessage(identity).setPositiveButton("Copied",null).create()).show();
         } catch (Exception error) { toast("Couldn't read the app's signing identity."); }
     }
 
@@ -353,7 +397,7 @@ public class DiscoverActivity extends Activity {
     }
 
     private void acceptLocation(Location location) {
-        cancelSearch(); DiscoverySettings.setArea(this,location.getLatitude(),location.getLongitude()); showStatus();
+        cancelSearch(); clearResults(); DiscoverySettings.setArea(this,location.getLatitude(),location.getLongitude()); showStatus();
         showEmpty("Search area saved. Daily updates will use this area even if you travel elsewhere.");
         if (DiscoverySettings.configured(this)) load();
     }
@@ -374,5 +418,5 @@ public class DiscoverActivity extends Activity {
             else toast("Location permission wasn't granted. You can choose coordinates instead.");
         }
     }
-    @Override protected void onDestroy() {cancelSearch();stopLocation();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override protected void onDestroy() {cancelSearch();stopLocation();handler.removeCallbacksAndMessages(null);if(setupDialog!=null)setupDialog.dismiss();for(AlertDialog dialog:dialogs)dialog.dismiss();super.onDestroy();}
 }

@@ -35,19 +35,31 @@ final class DiscoverySettings {
         }
     }
 
+    static boolean hasUnreadableKey(Context context) {
+        return !prefs(context).getString("key_ciphertext", "").isEmpty() && apiKey(context).isEmpty();
+    }
+
+    static final class KeyStorageException extends Exception {
+        KeyStorageException(Exception cause) { super(cause); }
+    }
+
     static void save(Context context, String key, int radiusKm, boolean daily,
                      String privacyUrl, String termsUrl) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey());
+        String ciphertext, iv;
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey());
+            ciphertext=Base64.encodeToString(cipher.doFinal(key.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP);
+            iv=Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP);
+        } catch (Exception error) { throw new KeyStorageException(error); }
         SharedPreferences.Editor editor = prefs(context).edit();
-        editor.putString("key_ciphertext", Base64.encodeToString(cipher.doFinal(key.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP));
-        editor.putString("key_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP));
+        editor.putString("key_ciphertext", ciphertext);
+        editor.putString("key_iv", iv);
         editor.putInt("radius_km", radiusKm).putBoolean("daily", daily);
         editor.putString("privacy_url", privacyUrl).putString("terms_url", termsUrl);
         editor.putString("revision", UUID.randomUUID().toString());
         editor.remove("last_success").remove("result_ids").remove("new_ids").remove("last_error");
         if (!editor.commit()) throw new java.io.IOException("Settings could not be saved");
-        DailyDiscoveryJob.schedule(context);
     }
 
     static void setArea(Context context, double latitude, double longitude) {

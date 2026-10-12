@@ -33,3 +33,31 @@ Run `./gradlew assembleDebug lintDebug testDebugUnitTest` on Linux/macOS, or `gr
 The included GitHub Actions workflow performs those checks on a pull request. It does not test live Google requests, a physical phone, or actual overnight scheduling. See [VALIDATION.md](VALIDATION.md) for the supplied build's actual verification status and [REVIEW.md](REVIEW.md) for CodeRabbit setup.
 
 Key files: `MainActivity.java` implements the journal and database migration; `DiscoverActivity.java` implements discovery setup and results; `DiscoveryClient.java` makes official SDK calls; `DiscoverySettings.java` encrypts the key with Android Keystore; `DailyDiscoveryJob.java` schedules daily ID queries; `BackupCodec.java` handles versioned journal backups.
+
+## Release signing and updates
+
+Keep the same signing key for every update. An APK signed with a different key
+cannot update an installed copy, including a debug APK signed with another
+machine's debug key. Export the journal before changing installation/signing.
+For an existing installation, retain its original signing key; creating a new
+release key does not make it compatible with that installation.
+
+Create a release key outside this repository using JDK keytool (enter passwords
+at its prompts, rather than putting them in shell history):
+
+```sh
+keytool -genkeypair -v -keystore /safe/path/table-notes-release.jks -alias table-notes -keyalg RSA -keysize 3072 -validity 10000
+```
+
+Back up the keystore in at least two secure locations, with an encrypted offline
+copy. Keep the alias and passwords in a password manager and verify that a backup
+can be read with keytool. Losing the key prevents updates to existing installs.
+Never commit a keystore, passwords, API keys or local.properties.
+
+Set TABLE_NOTES_STORE_FILE (absolute keystore path), TABLE_NOTES_STORE_PASSWORD,
+TABLE_NOTES_KEY_ALIAS and TABLE_NOTES_KEY_PASSWORD in the environment. Alternatively,
+put the same four property names in root signing.properties, which is git-ignored.
+Use forward slashes for Windows paths in that file. Environment values take
+precedence. Run ./gradlew assembleRelease (gradlew.bat on Windows).
+Without all four values, debug builds still work and release APKs remain unsigned;
+there is no fallback to a different signing key.
