@@ -52,13 +52,13 @@ public class MainActivity extends Activity {
         summary=text("",14,GREEN); summary.setPadding(0,dp(8),0,dp(16)); root.addView(summary);
         lastBackup=text("",12,GREEN); root.addView(lastBackup);
         Button discover=button("Discover restaurants · Google Maps");
-        root.addView(discover,new LinearLayout.LayoutParams(-1,dp(52)));
+        root.addView(discover,new LinearLayout.LayoutParams(-1,-2));
         discover.setOnClickListener(v->startActivityForResult(new Intent(this,DiscoverActivity.class),DISCOVER));
-        search=new EditText(this); search.setSingleLine(true); search.setHint("Search restaurants or comments"); search.setTextSize(15); root.addView(search,new LinearLayout.LayoutParams(-1,dp(52)));
+        search=new EditText(this); search.setSingleLine(true); search.setHint("Search restaurants or comments"); search.setTextSize(15); search.setMinHeight(dp(52)); root.addView(search,new LinearLayout.LayoutParams(-1,-2));
         Spinner order=new Spinner(this); order.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Recently edited","Highest grade","Lowest grade","Name A–Z"})); root.addView(order);
         order.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){ public void onItemSelected(AdapterView<?> p,View v,int pos,long id){sort=pos;refresh();} public void onNothingSelected(AdapterView<?> p){} });
         ScrollView scroll=new ScrollView(this); list=column(); scroll.addView(list); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        Button add=button("+  Add a restaurant"); add.setTextColor(Color.WHITE); add.setBackground(shape(GREEN,18)); root.addView(add,new LinearLayout.LayoutParams(-1,dp(56))); add.setOnClickListener(v->editor(-1,"",8,""));
+        Button add=button("+  Add a restaurant"); add.setTextColor(Color.WHITE); add.setBackground(shape(GREEN,18)); add.setMinHeight(dp(56)); root.addView(add,new LinearLayout.LayoutParams(-1,-2)); add.setOnClickListener(v->editor(-1,"",8,""));
         search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){refresh();}public void afterTextChanged(Editable e){} });
         if(state!=null){sort=state.getInt("sort",0); order.setSelection(sort); search.setText(state.getString("search",""));}
         refresh();
@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
-    private Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextColor(GREEN);return b;}
+    private Button button(String s){Button b=new Button(this);b.setMinHeight(dp(52));b.setText(s);b.setAllCaps(false);b.setTextColor(GREEN);return b;}
     private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private void refresh(){
         if(list==null)return; list.removeAllViews();
@@ -101,8 +101,13 @@ public class MainActivity extends Activity {
                 TextView score=text(grade+" / 10",19,GREEN);score.setPadding(0,dp(6),0,dp(6));card.addView(score);
                 TextView note=text(comment.isEmpty()?"Tap to add a comment":comment,15,Color.rgb(94,101,92));note.setMaxLines(2);note.setEllipsize(TextUtils.TruncateAt.END);card.addView(note);
                 String placeId=c.getString(4);
-                if(placeId!=null&&!placeId.isEmpty()){Button map=button("View on Google Maps");card.addView(map);map.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://www.google.com/maps/search/?api=1&query="+android.net.Uri.encode(name)+"&query_place_id="+android.net.Uri.encode(placeId))));}catch(ActivityNotFoundException error){toast("No app is available to open Google Maps.");}});}
-                card.setFocusable(true);card.setContentDescription(name+", "+grade+" out of 10. "+comment);card.setOnClickListener(v->detail(id,name,grade,comment));
+                if(placeId!=null&&!placeId.isEmpty()){Button map=button("View on Google Maps");map.setFocusable(true);map.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);card.addView(map);map.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://www.google.com/maps/search/?api=1&query="+android.net.Uri.encode(name)+"&query_place_id="+android.net.Uri.encode(placeId))));}catch(ActivityNotFoundException error){toast("No app is available to open Google Maps.");}});}
+                card.setFocusable(false);card.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                nameView.setFocusable(true);nameView.setContentDescription(name+", "+grade+" out of 10. "+comment);
+                nameView.setOnClickListener(v->detail(id,name,grade,comment));
+                score.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                note.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                card.setOnClickListener(v->detail(id,name,grade,comment));
             }
         }
         if(count==0){TextView empty=text(query.isEmpty()?"Your next great meal starts here.\n\nAdd your first restaurant and give it a grade out of 10.":"No matches. Try another name or comment.",19,INK);empty.setPadding(dp(8),dp(48),dp(8),dp(48));empty.setGravity(Gravity.CENTER);list.addView(empty);}
@@ -113,8 +118,8 @@ public class MainActivity extends Activity {
         LinearLayout form=column();form.setPadding(dp(24),dp(12),dp(24),0);
         EditText name=new EditText(this);name.setHint("Restaurant name");name.setSingleLine(true);name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});name.setText(original);form.addView(name);
         TextView label=text("Grade: "+initial+" / 10",18,GREEN);label.setPadding(0,dp(20),0,dp(8));form.addView(label);
-        SeekBar grade=new SeekBar(this);grade.setMax(10);grade.setProgress(initial);grade.setContentDescription("Grade out of 10");form.addView(grade,new LinearLayout.LayoutParams(-1,dp(48)));
-        grade.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean u){label.setText("Grade: "+p+" / 10");}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){} });
+        SeekBar grade=new SeekBar(this);grade.setMax(10);grade.setProgress(initial);describeGrade(grade,initial);form.addView(grade,new LinearLayout.LayoutParams(-1,dp(48)));
+        grade.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean u){label.setText("Grade: "+p+" / 10");describeGrade(s,p);}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){} });
         EditText comment=new EditText(this);comment.setHint("What did you think?");comment.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);comment.setMinLines(3);comment.setMaxLines(6);comment.setGravity(Gravity.TOP);comment.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1000)});comment.setText(oldComment);form.addView(comment);
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle(id<0?"Add restaurant":"Edit restaurant").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
@@ -123,6 +128,11 @@ public class MainActivity extends Activity {
         dialog.setOnKeyListener((d,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)requestDiscard();return true;}return false;});
         editDialog=dialog;draftName=name;draftComment=comment;draftGrade=grade;editingId=id;draftPlaceId=linkedPlaceId;
         dialog.setOnShowListener(v->{dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(b->requestDiscard());dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{String n=name.getText().toString().trim();if(n.isEmpty()){name.setError("Enter a restaurant name");return;}ContentValues values=new ContentValues();values.put("name",n);values.put("grade",grade.getProgress());values.put("comment",comment.getText().toString().trim());values.put("updated",System.currentTimeMillis());if(id<0&&!linkedPlaceId.isEmpty())values.put("google_place_id",linkedPlaceId);try{if(id<0)db.insertOrThrow("places",null,values);else db.update("places",values,"id=?",new String[]{String.valueOf(id)});dialog.dismiss();refresh();}catch(Exception e){toast("Couldn't save. Please try again.");}});});dialog.show();
+    }
+    private void describeGrade(SeekBar grade,int value) {
+        if(android.os.Build.VERSION.SDK_INT>=30) {
+            grade.setContentDescription("Grade"); grade.setStateDescription(value+" of 10");
+        } else grade.setContentDescription("Grade: "+value+" of 10");
     }
     private void requestDiscard() {
         if(discardDialog!=null&&discardDialog.isShowing())return;
