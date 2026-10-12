@@ -1,9 +1,11 @@
 # Review findings: verification and Galaxy S25+ checklist
 
-Branch: fix/review-findings, based on android-app at 2409c821eeb776eff91a4cff03f0ab92b2268ddf.
+The nine task commits were prepared on fix/review-findings from android-app at 2409c821eeb776eff91a4cff03f0ab92b2268ddf, then merged into main via PRs #2 and #1.
 All nine findings were confirmed by reading the original branch before editing.
-These changes are implemented, but local builds and tests did not start. The first PR CI run assembled the debug APK and passed all 11 JVM tests, then failed lint on redundant backup exclusions. Those exclusions are now corrected; CI recheck is pending.
+These changes are implemented, but local builds and tests did not start. The first PR CI run assembled the debug APK and passed all 11 JVM tests, then failed lint on redundant backup exclusions. Those exclusions are corrected. The final CI run passed debug assembly, lint and all 11 JVM tests (8 backup tests and 3 lookup tests); lint reported 0 errors and 19 warnings.
 No phone behavior has been verified. No signing credentials were used.
+
+The passing CI run covers the completed code for all nine tasks. The per-task local attempts below remained blocked by missing Java.
 
 ## Task status
 
@@ -17,7 +19,7 @@ No phone behavior has been verified. No signing credentials were used.
 | 6 Duplicate reviews | Confirmed / implemented | MainActivity.java, PlaceIdLookup.java | Bound SQL lookup by exact ID; existing personal fields go to edit, oldest existing duplicate wins, no existing rows deleted. Check attempt failed; JVM tests added in task 9. |
 | 7 Restore success | Confirmed / implemented | MainActivity.java | Success is after endTransaction returns; parse-before-confirm, replace-only transaction retained. Check attempt failed; fault injection/device test pending. |
 | 8 Accessibility/layout | Confirmed / implemented; TalkBack needs device | MainActivity.java, DiscoverActivity.java | Reviewed wrap_content/minHeight, API-guarded stateDescription, separate accessible Maps action, numeric keyboard and comma parsing. Check attempt failed. |
-| 9 Tests | Confirmed missing coverage / JVM passed in initial CI; migration not run | app/build.gradle, MainActivity.java, JournalDatabase.java, PlaceIdLookupTest.java, JournalDatabaseMigrationTest.java, REVIEW-FINDINGS.md | Three lookup JVM tests passed in initial CI (plus eight existing backup tests). Instrumented migration test uses production helper, separate DB, row preservation/reopen checks. No Robolectric; only AndroidX test dependencies added. Both commands failed before Gradle. |
+| 9 Tests | Confirmed missing coverage / JVM passed in final CI; migration not run | app/build.gradle, MainActivity.java, JournalDatabase.java, PlaceIdLookupTest.java, JournalDatabaseMigrationTest.java, REVIEW-FINDINGS.md | Three lookup JVM tests passed in final CI (plus eight existing backup tests). Instrumented migration test uses production helper, separate DB, row preservation/reopen checks. No Robolectric; only AndroidX test dependencies added. Both commands failed before Gradle. |
 
 Paths without a prefix are under app/src/main (manifest, res/xml or java/com/nikita/restaurantjournal); JVM tests are under app/src/test/java and the migration test is under app/src/androidTest/java.
 
@@ -58,7 +60,11 @@ Initial run: https://github.com/superobott/table-notes/actions/runs/38167180232
 - Overall command failed at lintDebug: 9 errors, 19 warnings. All 9 errors were FullBackupContent: redundant exclusions outside the database-only include lists. They were removed; an include list already excludes every other domain, including sharedpref. No lint suppression was added.
 - Actual final log: BUILD FAILED in 2m 2s; 48 actionable tasks: 48 executed.
 - Kotlin metadata compatibility diagnostics also appeared from the existing Places 5.2.0 dependency during lint analysis; dependency/toolchain versions are unchanged in this scoped task.
-- The corrected branch needs the next CI run to confirm lint. The instrumented migration test was not executed by this workflow.
+- The corrected code passed [final CI run 38214205017](https://github.com/superobott/table-notes/actions/runs/38214205017) on commit 4c8a98eb9c7e3c7587d2640006f2d36e5f4b88e0, subsequently merged into main. Actual output: BUILD SUCCESSFUL in 2m 17s; 48 actionable tasks: 48 executed. Final JUnit XML: 3 lookup tests and 8 backup tests, with 0 failures and 0 errors. Final lint XML: 0 errors, 19 warnings. Nonfatal Places/Kotlin metadata diagnostics remain. The instrumented migration test was not executed by this workflow.
+
+## CodeRabbit review
+
+On 12 October 2026, a CodeRabbit CLI review of committed main-branch changes against pre-Android commit b880e3d47f631dfa2f64a8ed924769f237c873cb completed: 32 files reviewed, 1 minor finding about stale verification documentation. The Gradle wrapper JAR was excluded as a binary. This documentation update addresses that finding using the actual final CI evidence. No follow-up CodeRabbit review of this documentation commit has been run. This is separate from the interrupted GitHub PR review and does not verify device behavior.
 
 ## Physical phone verification still required
 
@@ -92,7 +98,7 @@ Discovery listings are retained only in process memory (up to one session respon
 never in SQLite, preferences, JSON exports or saved-state bundles. A process restart
 loses these live listings. Place IDs remain the only persisted Google provider content.
 The journal database migration remains the same additive ALTER TABLE as before.
-No new screen, map, localization, sharing, merge or deployment is included.
+The implementation added no new screen, map, localization or sharing and was not deployed. PRs #2 and #1 were later merged at the user’s explicit request.
 
 Android backup formats: https://developer.android.com/identity/data/autobackup
 Places initialization API: https://developers.google.com/maps/documentation/places/android-sdk/reference/com/google/android/libraries/places/api/Places
